@@ -12,7 +12,6 @@ from pyomo.environ import *
 from pathlib import Path
 
 import FRESH_define_community as cm
-import FRESH_LP
 import FRESH_KKT
 import FRESH_plots
 

@@ -11,36 +11,39 @@ import pandas as pd
 from pyomo.environ import *
 from pathlib import Path
 
-import FRESH_define_community as cm
+import PARTICIPATE_functions as pf
 import FRESH_KKT
-import FRESH_plots
 
 solver_name = 'gurobi'
-battery = True
+battery = False
 
-prosumer = (['Prosumer 1',
-             'Prosumer 2',
-             'Prosumer 3',
-             'Prosumer 4', 
-             'Prosumer 5', 
-             'Prosumer 6'])
+country = 'Austria'
+scenario_name = 'Default scenario'
+model_name = 'FRESH:COM v2.0'
 
+building_types = ['SH', 'SAB', 'LAB']
 
-if cm.clustering == True:
-    hours = len(cm.time_steps) / len(cm.counts)
-    weight = np.matlib.repmat(cm.counts,int(hours),1).transpose().reshape(len(cm.time_steps),1)[:,0]
+settlement_pattern = 'rural'
 
-N = 5
-years = np.arange(1,N+1)
-x_0 = [0,0,3,5,2,1]
+buildings_per_SP ={'city': {'SH': 0, 'SAB': 0, 'LAB': 10}, #city 
+                   'town': {'SH': 0, 'SAB': 10, 'LAB': 0}, #town
+                   'suburban': {'SH': 10, 'SAB': 0, 'LAB': 2}, #suburban
+                   'rural': {'SH': 10, 'SAB': 0, 'LAB': 0} #rural
+                   }  
 
-costs = FRESH_KKT.run_KKT(prosumer,
-                          cm, 
-                          weight, 
-                          battery, 
-                          solver_name, 
-                          years, 
-                          d, 
-                          x_0)
-    
+load, PV, prosumer_data, grid_data, weight, distances = pf.define_community(
+    settlement_pattern,
+    buildings_per_SP,
+    model_name,   
+    scenario_name,
+    country,
+    year=2019,
+    clustering=True)
 
+N = 3
+years = np.arange(1,N+1).tolist()
+x_0 = [1,2,3,5,2,1,0,0,2,2]
+d = {}
+
+costs, b, q_share = FRESH_KKT.run_KKT(load, PV, prosumer_data, grid_data, weight, 
+              distances, battery, solver_name, years, d, x_0)

@@ -13,6 +13,7 @@ from pathlib import Path
 
 import PARTICIPATE_functions as pf
 import FRESH_KKT
+import FRESH_LP
 
 solver_name = 'gurobi'
 battery = False
@@ -43,7 +44,18 @@ load, PV, prosumer_data, grid_data, weight, distances = pf.define_community(
 N = 3
 years = np.arange(1,N+1).tolist()
 x_0 = [1,2,3,5,2,1,0,0,2,2]
+prosumer = load.columns.tolist() 
 d = {}
+for n in years:
+   d[n] = {}
+   for i in prosumer:
+       d[n][i] = np.random.choice([0,1])
+
+results, q_share_total, community_welfare = FRESH_LP.run_LP(
+    load, PV, prosumer_data, grid_data, weight, 
+    distances, battery, solver_name, sharing=False)
+
+emissions = results['emissions']
 
 costs, b, q_share = FRESH_KKT.run_KKT(load, PV, prosumer_data, grid_data, weight, 
-              distances, battery, solver_name, years, d, x_0)
+              distances, emissions, battery, solver_name, years, d, x_0)

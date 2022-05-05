@@ -11,7 +11,7 @@ import pandas as pd
 from pyomo.environ import *
   
 def run_KKT(load, PV, prosumer_data, grid_data, weight, 
-            distances, battery, solver_name, years, d, x_0):
+            distances, emissions_wo_comm, battery, solver_name, years, d, x_0):
     
     
     time_steps = load.index.tolist()
@@ -142,10 +142,13 @@ def run_KKT(load, PV, prosumer_data, grid_data, weight,
     # transition function
     
     def transition_fct_rule(model, i, n):
-        if n == 1:
-            return (model.x[n,i] == x_0[i] + model.u[n,i] - b_0[i])
-        else:
-            return (model.x[n,i] == model.x[n-1,i] + model.u[n,i] - model.b[n,i])
+        if d[n][i] == 1:
+            if n == 1:
+                return (model.x[n,i] == x_0[i] + d[n][i] * model.u[n,i] - b_0[i])
+            else:
+                return (model.x[n,i] == model.x[n-1,i] + model.u[n,i] - model.b[n,i])
+        if d[n][i] == 0:
+            return (model.x[n,i] == 0)
     model.transition_fct_con = Constraint(prosumer, 
                                           years,
                                           rule=transition_fct_rule)
@@ -156,6 +159,12 @@ def run_KKT(load, PV, prosumer_data, grid_data, weight,
     model.max_x_con = Constraint(prosumer,
                                   years,
                                   rule=max_x_con_rule)
+    
+    def d_con_rule(model, i, n):
+        if d[n][i] == 1:
+            return
+        if d[n][i] == 0:
+            return
 
     # auxilary variable constraints (big-M style)
     def bin1_con_rule(model, i, n):
@@ -393,6 +402,16 @@ def run_KKT(load, PV, prosumer_data, grid_data, weight,
         for t in time_steps
         for n in years)
     
+    emissions = {}
+    for n in years:
+        emissions[n] = {}
+        for i in prosumer:
+            emissions[n][i] = sum(model.q_G_in[t,i,n]
+                                  * weight[t]
+                                  * grid_data.loc[t,'Emissions']
+                                  / 1000000 
+                                  for t in time_steps)
+    
     # for i in prosumer:
     #     community_welfare[i] = sum(- grid_data.loc[t,'Residential']*model.q_G_in[t,i]*weight[t]
     #                                + grid_data.loc[t,'DA']*model.q_G_out[t,i]*weight[t] 
@@ -445,7 +464,9 @@ def run_KKT(load, PV, prosumer_data, grid_data, weight,
     # F4 ... individual weights on individual emissions and costs
     
     
-    # F1 = sum(emissions[i] for i in prosumer_old)
+    F1 = sum(emissions[n][i] - model.b[n,i] * emissions_wo_comm[i]
+             for i in prosumer
+             for n in years)
     
     # F2 = sum(Delta_emissions[i] for i in prosumer_old)
     
@@ -460,7 +481,7 @@ def run_KKT(load, PV, prosumer_data, grid_data, weight,
     # choose one of the objective functions F1, F2, ... defined above
     
     print('Solving...')
-    model.obj = Objective(expr = 1, 
+    model.obj = Objective(expr = F1, 
                           sense = minimize)
     
     opt = SolverFactory(solver_name)
@@ -476,7 +497,7 @@ def run_KKT(load, PV, prosumer_data, grid_data, weight,
         a = []
         for i in prosumer:
             a.append(value(sum(model.q_share[t,i,j,n]*weight[t]  
-                                for t in time_steps)))
+                               for t in time_steps)))
         q_share[j] = a
     
     # results = pd.DataFrame(index=prosumer)
@@ -514,5 +535,9 @@ def run_KKT(load, PV, prosumer_data, grid_data, weight,
     for n in years:
         for i in prosumer:
             b.append(value(model.b[n,i]))
+    u = []
+    for n in years:
+        for i in prosumer:
+            u.append(value(model.u[n,i]))
 
-    return costs_value, b, q_share
+    return costs_value, b, u, q_share

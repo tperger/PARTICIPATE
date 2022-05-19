@@ -26,14 +26,14 @@ def run_LP(load, PV, prosumer_data, grid_data, weight,
 
 
     # deactivate BESS
-    if battery == False:
-        for i in prosumer:
-            prosumer_data.loc[SoC_max,i] = 0
-            prosumer_data.loc[q_bat_max,i] = 0            
+    # if battery == False:
+    #     for i in prosumer:
+    #         prosumer_data.loc[SoC_max,i] = 0
+    #         prosumer_data.loc[q_bat_max,i] = 0            
     
     eta_battery = 0.9
     
-    index_time = list(range(len(time_steps)))
+    #index_time = list(range(len(time_steps)))
     
     wtp={}
     for i in prosumer:
@@ -120,19 +120,19 @@ def run_LP(load, PV, prosumer_data, grid_data, weight,
     def q_B_in_constraint_rule(model, i, t):
          return (model.q_B_in[t,i] <= prosumer_data.loc[q_bat_max][i])
     model.q_B_in_con = Constraint(prosumer, 
-                                     time_steps, 
-                                     rule = q_B_in_constraint_rule)
+                                  time_steps, 
+                                  rule = q_B_in_constraint_rule)
      
     def q_B_out_constraint_rule(model, i, t):
          return (model.q_B_out[t,i] <= prosumer_data.loc[q_bat_min][i])
     model.q_B_out_con = Constraint(prosumer, 
-                                      time_steps, 
-                                      rule = q_B_out_constraint_rule)
+                                   time_steps, 
+                                   rule = q_B_out_constraint_rule)
      
     def SoC_constraint_rule(model, i, t):
          if t == 0:
              return (model.SoC[time_steps[-1],i] 
-                     + model.q_B_in[time_steps[t],i] *eta_battery 
+                     + model.q_B_in[time_steps[t],i] * eta_battery 
                      - model.q_B_out[time_steps[t],i] / eta_battery
                      - model.SoC[time_steps[t],i] == 0)
          elif t > 0:
@@ -141,8 +141,8 @@ def run_LP(load, PV, prosumer_data, grid_data, weight,
                      - model.q_B_out[time_steps[t],i] / eta_battery
                      - model.SoC[time_steps[t],i] == 0)
     model.SoC_con = Constraint(prosumer, 
-                                index_time, 
-                                rule = SoC_constraint_rule)
+                               index_time, 
+                               rule = SoC_constraint_rule)
      
     def CW_constraint_rule(model, i, t):
          return model.community_welfare[t,i] == (
@@ -153,41 +153,42 @@ def run_LP(load, PV, prosumer_data, grid_data, weight,
                    * weight[t]
                    for j in prosumer))
     model.CW_con = Constraint(prosumer, 
-                               time_steps, 
-                               rule = CW_constraint_rule)
+                              time_steps, 
+                              rule = CW_constraint_rule)
     
-    # # Objective function
-    # community_welfare = {new_list: [] for new_list in prosumer}
-    # prosumer_welfare = {new_list: [] for new_list in prosumer}
-    # prosumer_welfare2 = {new_list: [] for new_list in prosumer}
+    # Objective function
+    community_welfare = {new_list: [] for new_list in prosumer}
+    prosumer_welfare = {new_list: [] for new_list in prosumer}
+    prosumer_welfare2 = {new_list: [] for new_list in prosumer}
        
     
-    # for i in prosumer:
-    #     community_welfare[i] = sum(- cm.p_grid_in * model.q_G_in[t,i]*weight[t]
-    #                                + cm.p_grid_out * model.q_G_out[t,i]*weight[t] 
-    #                                for t in cm.time_steps)
-    #     prosumer_welfare[i] = sum((cm.p_grid_in 
-    #                                + (cm.prosumer_data.loc[cm.w,j]
-    #                                   * (1 - cm.distances.loc[i,j]))
-    #                                * cm.emissions.Emissions.loc[t] / 1000000)
-    #                               * model.q_share[t,i,j]*weight[t] 
-    #                               for j in prosumer 
-    #                               for t in cm.time_steps)
-    #     prosumer_welfare2[i] = sum((cm.p_grid_in 
-    #                                 + (cm.prosumer_data.loc[cm.w,i]
-    #                                    * (1 - cm.distances.loc[j,i]))
-    #                                 * cm.emissions.Emissions.loc[t] / 1000000)
-    #                                * model.q_share[t,j,i]*weight[t] 
-    #                                for j in prosumer 
-    #                                for t in cm.time_steps)
+    for i in prosumer:
+        community_welfare[i] = sum(- grid_data.loc[t,'Residential'] * model.q_G_in[t,i]*weight[t]
+                                    + grid_data.loc[t, 'DA'] * model.q_G_out[t,i]*weight[t] 
+                                    for t in time_steps)
+        prosumer_welfare[i] = sum(wtp[i][j][t]
+                                  * model.q_share[t,i,j]
+                                  * weight[t]
+                                  for j in prosumer 
+                                  for t in time_steps)
+        prosumer_welfare2[i] = sum(wtp[j][i][t]
+                                   * model.q_share[t,j,i]
+                                   * weight[t]
+                                   for j in prosumer 
+                                   for t in time_steps)
     
     #     # 1. prosumer i sells to prosumer j
     #     # 2. prosumer i buys from prosumer j
     
+    # model.obj = Objective(
+    #     expr = sum(model.community_welfare[t,i] 
+    #                 for t in time_steps 
+    #                 for i in prosumer), 
+    #     sense = maximize)
+    
     model.obj = Objective(
-        expr = sum(model.community_welfare[t,i] 
-                    for t in time_steps 
-                    for i in prosumer), 
+        expr = sum(community_welfare[i] + prosumer_welfare2[i]
+                   for i in prosumer), 
         sense = maximize)
     
     opt = SolverFactory(solver_name)

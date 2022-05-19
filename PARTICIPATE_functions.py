@@ -241,10 +241,22 @@ def define_community(settlement_pattern=None,
         weight = pd.DataFrame(_data, index=time_steps, columns=['weight'])
         
     # Other values
-    _file_name = 'Distances_'+settlement_pattern+'.csv'
-    distances = pd.read_csv(PATH_FILES / _file_name,
-                          sep=';',
-                          header=0, 
-                          index_col='Prosumer')
+    # _file_name = 'Distances_'+settlement_pattern+'.csv'
+    # distances = pd.read_csv(PATH_FILES / _file_name,
+    #                       sep=';',
+    #                       header=0, 
+    #                       index_col='Prosumer')
+    
+    M = len(prosumer)
+    
+    b = np.zeros((M,1), int)
+    U = np.random.uniform(low=0, high=1.0, size=(M, M))
+    S = np.tril(U) + np.tril(U, -1).T
+    np.fill_diagonal(S, b)
+    
+    distances = pd.DataFrame(index=prosumer, 
+                             columns=prosumer, 
+                             data=S)
+    distances=distances.round(2)
         
     return load, PV, prosumer_data, grid_data, weight, distances

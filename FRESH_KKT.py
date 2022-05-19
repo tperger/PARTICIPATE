@@ -32,6 +32,7 @@ def run_KKT(load, PV, prosumer_data, grid_data, weight,
             prosumer_data.loc[SoC_max,i] = 0
             prosumer_data.loc[q_bat_max,i] = 0   
     eta_battery = 0.9
+    SoC_init = 0
        
     N = len(years)     
     x_0 = dict(zip(prosumer, x_0))
@@ -59,11 +60,11 @@ def run_KKT(load, PV, prosumer_data, grid_data, weight,
     # Define decision variables: upper level
     model.x = Var(years,
                   prosumer,
-                  within=NonNegativeIntegers) # state variable
+                  within=NonNegativeReals) # state variable
 
     model.u = Var(years,
                   prosumer,
-                  within=NonNegativeIntegers) # control variable
+                  within=NonNegativeReals) # control variable
 
     model.b = Var(years,
                   prosumer,
@@ -101,6 +102,7 @@ def run_KKT(load, PV, prosumer_data, grid_data, weight,
     model.lambda_load = Var(time_steps, prosumer, years)
     model.lambda_PV = Var(time_steps, prosumer, years)
     model.lambda_SoC = Var(time_steps, prosumer, years)
+    model.lambda_SoC_init = Var(prosumer, years)
     
     model.mu_SoC = Var(time_steps, prosumer, years,
                        within = NonNegativeReals)
@@ -131,9 +133,9 @@ def run_KKT(load, PV, prosumer_data, grid_data, weight,
                             within=Binary)
     
     
-    model.M1 = 50000
-    model.M2 = 20000
-    model.M3 = 20
+    model.M1 = 5000000
+    model.M2 = 2000000
+    model.M3 = 200
     
     print('variable declaration done')
     
@@ -159,12 +161,6 @@ def run_KKT(load, PV, prosumer_data, grid_data, weight,
     model.max_x_con = Constraint(prosumer,
                                   years,
                                   rule=max_x_con_rule)
-    
-    def d_con_rule(model, i, n):
-        if d[n][i] == 1:
-            return
-        if d[n][i] == 0:
-            return
 
     # auxilary variable constraints (big-M style)
     def bin1_con_rule(model, i, n):
@@ -280,7 +276,8 @@ def run_KKT(load, PV, prosumer_data, grid_data, weight,
         elif t == index_time[-1]:
             return (-model.lambda_SoC[time_steps[t],i,n] 
                     + model.lambda_SoC[time_steps[0],i,n] 
-                    + model.mu_SoC[time_steps[t],i,n] >= 0)
+                    + model.mu_SoC[time_steps[t],i,n]
+                    + model.lambda_SoC_init[i,n]  >= 0)
     model.SoC_compl_1 = Constraint(prosumer, index_time, years, 
                                    rule = SoC_complementarity_rule_1)
     
@@ -294,6 +291,7 @@ def run_KKT(load, PV, prosumer_data, grid_data, weight,
             return (-model.lambda_SoC[time_steps[t],i,n] 
                     + model.lambda_SoC[time_steps[0],i,n] 
                     + model.mu_SoC[time_steps[t],i,n] 
+                    + model.lambda_SoC_init[i,n]
                     <= (1-model.u_SoC[time_steps[t],i,n]) * model.M1)
     model.SoC_compl_2 = Constraint(prosumer, index_time, years, 
                                    rule = SoC_complementarity_rule_2)
@@ -335,16 +333,23 @@ def run_KKT(load, PV, prosumer_data, grid_data, weight,
                     - model.SoC[time_steps[t],i,n] == 0)
     model.SoC_con = Constraint(prosumer, index_time, years, 
                                rule = SoC_constraint_rule)
+   
+    def SoC_init_constraint_rule(model, i, n):
+            return (model.SoC[time_steps[-1],i,n] == SoC_init)
+    model.SoC_init_con = Constraint(prosumer, years, 
+                                    rule = SoC_init_constraint_rule)
+    
     
     # Inequality constraints: mu
     
     def mu_SoC_max_complementarity_rule_1(model, i, t, n):
-        return (prosumer_data.loc[SoC_max][i] - model.SoC[t,i,n] >= 0)
+        return (model.b[n,i] * prosumer_data.loc[SoC_max][i] 
+                - model.SoC[t,i,n] >= 0)
     model.mu_SoC_max_compl_1 = Constraint(prosumer, time_steps, years,
                                           rule = mu_SoC_max_complementarity_rule_1)
     
     def mu_SoC_max_complementarity_rule_2(model, i, t, n):
-        return (prosumer_data.loc[SoC_max][i] 
+        return (model.b[n,i] * prosumer_data.loc[SoC_max][i] 
                 - model.SoC[t,i,n] <= (1-model.u_SoC_max[t,i,n])*model.M1)
     model.mu_SoC_max_compl_2 = Constraint(prosumer, time_steps, years, 
                                           rule = mu_SoC_max_complementarity_rule_2)
@@ -355,12 +360,13 @@ def run_KKT(load, PV, prosumer_data, grid_data, weight,
                                           rule = mu_SoC_max_complementarity_rule_3)
     
     def mu_q_B_in_complementarity_rule_1(model, i, t, n):
-        return (prosumer_data.loc[q_bat_max,i] - model.q_B_in[t,i,n] >= 0)
+        return (model.b[n,i] * prosumer_data.loc[q_bat_max,i] 
+                - model.q_B_in[t,i,n] >= 0)
     model.mu_q_B_in_compl_1 = Constraint(prosumer, time_steps, years, 
                                           rule = mu_q_B_in_complementarity_rule_1)
     
     def mu_q_B_in_complementarity_rule_2(model, i, t, n):
-        return (prosumer_data.loc[q_bat_max,i] 
+        return (model.b[n,i] * prosumer_data.loc[q_bat_max,i] 
                 - model.q_B_in[t,i,n] <= (1-model.u_B_max_in[t,i,n])*model.M1)
     model.mu_q_B_in_compl_2 = Constraint(prosumer, time_steps, years, 
                                           rule = mu_q_B_in_complementarity_rule_2)
@@ -371,12 +377,13 @@ def run_KKT(load, PV, prosumer_data, grid_data, weight,
                                           rule = mu_q_B_in_complementarity_rule_3)
     
     def mu_q_B_out_complementarity_rule_1(model, i, t, n):
-        return (prosumer_data.loc[q_bat_max,i] - model.q_B_out[t,i,n] >= 0)
+        return (model.b[n,i] * prosumer_data.loc[q_bat_min,i] 
+                - model.q_B_out[t,i,n] >= 0)
     model.mu_q_B_out_compl_1 = Constraint(prosumer, time_steps, years, 
                                           rule = mu_q_B_out_complementarity_rule_1)
     
     def mu_q_B_out_complementarity_rule_2(model, i, t, n):
-        return (prosumer_data.loc[q_bat_max,i] 
+        return (model.b[n,i] * prosumer_data.loc[q_bat_min,i] 
                 - model.q_B_out[t,i,n] <= (1-model.u_B_max_out[t,i,n])*model.M1)
     model.mu_q_B_out_compl_2 = Constraint(prosumer, time_steps, years, 
                                           rule = mu_q_B_out_complementarity_rule_2)
@@ -393,14 +400,14 @@ def run_KKT(load, PV, prosumer_data, grid_data, weight,
     # prosumer_welfare2 = {new_list: [] for new_list in prosumer}
     
     
-    costs = sum(
-        grid_data.loc[t,'Residential'] * model.q_G_in[t,i,n]
-        + sum(wtp[j][i][t] * model.q_share[t,j,i,n] for j in prosumer)
-        - grid_data.loc[t,'DA'] * model.q_G_out[t,i,n]
-        - sum(wtp[i][j][t] * model.q_share[t,i,j,n] for j in prosumer)
-        for i in prosumer
-        for t in time_steps
-        for n in years)
+    # costs = sum(
+    #     grid_data.loc[t,'Residential'] * model.q_G_in[t,i,n]
+    #     + sum(wtp[j][i][t] * model.q_share[t,j,i,n] for j in prosumer)
+    #     - grid_data.loc[t,'DA'] * model.q_G_out[t,i,n]
+    #     - sum(wtp[i][j][t] * model.q_share[t,i,j,n] for j in prosumer)
+    #     for i in prosumer
+    #     for t in time_steps
+    #     for n in years)
     
     emissions = {}
     for n in years:
@@ -468,6 +475,11 @@ def run_KKT(load, PV, prosumer_data, grid_data, weight,
              for i in prosumer
              for n in years)
     
+    F2 = sum(sum((emissions[n][i] - emissions_wo_comm[i]) * d[n][i] 
+                 for n in years)
+             * b_0[i]
+             for i in prosumer)
+    
     # F2 = sum(Delta_emissions[i] for i in prosumer_old)
     
     # F3 = sum(Delta_costs[i] for i in prosumer_old)
@@ -481,7 +493,7 @@ def run_KKT(load, PV, prosumer_data, grid_data, weight,
     # choose one of the objective functions F1, F2, ... defined above
     
     print('Solving...')
-    model.obj = Objective(expr = F1, 
+    model.obj = Objective(expr = F2, 
                           sense = minimize)
     
     opt = SolverFactory(solver_name)

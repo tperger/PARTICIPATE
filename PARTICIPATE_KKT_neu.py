@@ -11,20 +11,16 @@ import pandas as pd
 from pyomo.environ import *
   
 def run_KKT(load, PV, prosumer_data, grid_data, weight, 
-            distances, emissions_wo_comm, battery, solver_name, 
+            distances, costs_old, battery, solver_name, 
             years, s, s_1, x_0):
-    
-    
-    # Generate scenarios
-    num_scen = 5
-    scenarios = ['Scenario '+str(i) for i in range(1,num_scen+1)]
-    
-    p = 1/len(scenarios)
-    
+        
     time_steps = load.index.tolist()
     index_time = list(range(len(time_steps)))
     prosumer = load.columns.tolist() 
     weight=weight['weight'].tolist()
+    # scenarios = list(s.keys()) 
+    scenarios = ['Scenario 1']
+    p = 1/len(scenarios)
     
     # Define some parameters and variables
     SoC_max = 'Maximum Storage|Electricity|Energy Storage System'
@@ -453,13 +449,7 @@ def run_KKT(load, PV, prosumer_data, grid_data, weight,
     model.mu_q_B_out_compl_3 = Constraint(prosumer, time_steps, 
                                           years, scenarios, 
                                           rule = mu_q_B_out_complementarity_rule_3)
-    
-    
-    # define welfare (with different parts  for simplification in the code)
-    # community_welfare = {new_list: [] for new_list in prosumer}
-    # prosumer_welfare = {new_list: [] for new_list in prosumer}
-    # prosumer_welfare2 = {new_list: [] for new_list in prosumer}
-    
+        
     
     # costs = sum(
     #     grid_data.loc[t,'Residential'] * model.q_G_in[t,i,n,w]
@@ -472,104 +462,74 @@ def run_KKT(load, PV, prosumer_data, grid_data, weight,
     
     
     
-    emissions_1 = {}
+    # emissions_1 = {}
+    # for i in prosumer:
+    #     emissions_1[i] = sum(model.q_G_in[t,i,years[0],scenarios[0]]
+    #                          * weight[t]
+    #                          * grid_data.loc[t,'Emissions']
+    #                          / 1000000 
+    #                          for t in time_steps) 
+        
+    # emissions = {}
+    # for w in scenarios:
+    #     emissions[w] = {}
+    #     for n in years[1:]:
+    #         emissions[w][n] = {}
+    #         for i in prosumer:
+    #             emissions[w][n][i] = sum(model.q_G_in[t,i,n,w]
+    #                                      * weight[t]
+    #                                      * grid_data.loc[t,'Emissions']
+    #                                      / 1000000 
+    #                                      for t in time_steps)
+                
+    costs_1 = {}
     for i in prosumer:
-        emissions_1[i] = sum(model.q_G_in[t,i,years[0],scenarios[0]]
-                             * weight[t]
-                             * grid_data.loc[t,'Emissions']
-                             / 1000000 
-                             for t in time_steps) 
-        
-    emissions = {}
+        costs_1[i] = sum((
+            model.q_G_in[t,i,years[0],scenarios[0]] * grid_data.loc[t,'Residential']
+            - model.q_G_out[t,i,years[0],scenarios[0]] * grid_data.loc[t,'DA']
+            + sum(model.q_share[t,j,i,years[0],scenarios[0]] * wtp[j][i][t]
+            - model.q_share[t,i,j,years[0],scenarios[0]] * wtp[i][j][t] for j in prosumer))
+            * weight[t]
+            for t in time_steps)    
+    
+    costs = {}
     for w in scenarios:
-        emissions[w] = {}
+        costs[w] = {}
         for n in years[1:]:
-            emissions[w][n] = {}
+            costs[w][n] = {}
             for i in prosumer:
-                emissions[w][n][i] = sum(model.q_G_in[t,i,n,w]
-                                         * weight[t]
-                                         * grid_data.loc[t,'Emissions']
-                                         / 1000000 
-                                         for t in time_steps)
+                costs[w][n][i] = sum((
+                    model.q_G_in[t,i,n,w] * grid_data.loc[t,'Residential']
+                    - model.q_G_out[t,i,n,w] * grid_data.loc[t,'DA']
+                    + sum(model.q_share[t,j,i,n,w] * wtp[j][i][t]
+                    - model.q_share[t,i,j,n,w] * wtp[i][j][t] for j in prosumer))
+                    * weight[t]
+                    for t in time_steps)
     
-    # for i in prosumer:
-    #     community_welfare[i] = sum(- grid_data.loc[t,'Residential']*model.q_G_in[t,i]*weight[t]
-    #                                + grid_data.loc[t,'DA']*model.q_G_out[t,i]*weight[t] 
-    #                                for t in time_steps)
-    #     prosumer_welfare[i] = sum((grid_data.loc[t,'Residential'] 
-    #                                + (prosumer_data.loc[w,j]
-    #                                   * (1 - distances.loc[i,j]))
-    #                                * grid_data.Emissions.loc[t] / 1000000)
-    #                               * model.q_share[t,i,j]*weight[t] 
-    #                               for j in prosumer 
-    #                               for t in time_steps)
-    #     prosumer_welfare2[i] = sum((grid_data.loc[t,'Residential'] 
-    #                                 + (prosumer_data.loc[w,i]
-    #                                    * (1 - distances.loc[j,i]))
-    #                                 * grid_data.Emissions.loc[t] / 1000000)
-    #                                * model.q_share[t,j,i]*weight[t] 
-    #                                for j in prosumer 
-    #                                for t in time_steps)
-    
-    #     # prosumer_welfare[i]: prosumer i sells to prosumer j
-    #     # prosumer_welfare2[i]: prosumer i buys from prosumer j
-    
-    # costs = {new_list: [] for new_list in prosumer}    
-    # for i in prosumer:
-    #     costs[i] = (-community_welfare[i] - prosumer_welfare[i] 
-    #                 + prosumer_welfare2[i])
-        
-    # Delta_costs = {new_list: [] for new_list in prosumer_old}    
-    # for i in prosumer_old:
-    #     Delta_costs[i] = ((costs[i]-results_old.loc[i,'costs']))
-    #                       #/ abs(results_old.loc[i,'costs']))
-    
-    # emissions = {new_list: [] for new_list in prosumer}
-    # for i in prosumer:
-    #     emissions[i] = (sum(model.q_G_in[t,i]*weight[t]
-    #                         *grid_data.Emissions.loc[t] / 1000000
-    #                         for t in time_steps))
-        
-    # Delta_emissions = {new_list: [] for new_list in prosumer_old}    
-    # for i in prosumer_old:
-    #     Delta_emissions[i] = ((emissions[i]-results_old.loc[i,'emissions'])*1000)
-    #                           #/ abs(results_old.loc[i,'emissions']))
-        
-    
+   
     # objective functions
-    
-    # F1 ... overall emissions
-    # F2 ... individual emissions
-    # F3 ... individual costs
-    # F4 ... individual weights on individual emissions and costs
-    
-    
-    # F1 = sum(emissions[w][n][i] - model.b[n,i,w] * emissions_wo_comm[i]
-    #          for i in prosumer
-    #          for n in years
-    #          for w in scenarios)
-    
-    F2 = (sum((emissions_1[i] - emissions_wo_comm[i]) * s_1[i] * b_0[i] 
+ 
+
+    F1 = (sum((costs_1[i] - costs_old[i]) * s_1[i] * b_0[i] 
               for i in prosumer) 
-          + p * sum((emissions[w][n][i] - emissions_wo_comm[i]) * s[w][n][i] * b_0[i]
+          + p * sum((costs[w][n][i] - costs_old[i]) * s[w][n][i] * b_0[i]
                     for i in prosumer
                     for n in years[1:]
                     for w in scenarios))
     
-    # F2 = sum(Delta_emissions[i] for i in prosumer_old)
+    # F2 = (sum((emissions_1[i] - emissions_wo_comm[i]) * s_1[i] * b_0[i] 
+    #           for i in prosumer) 
+    #       + p * sum((emissions[w][n][i] - emissions_wo_comm[i]) * s[w][n][i] * b_0[i]
+    #                 for i in prosumer
+    #                 for n in years[1:]
+    #                 for w in scenarios))
     
-    # F3 = sum(Delta_costs[i] for i in prosumer_old)
-    
-    # F4 = sum((alpha.loc[i,'alpha'] * Delta_costs[i])
-    #          +((1-alpha.loc[i,'alpha']) * Delta_emissions[i])
-    #          for i in prosumer_old)
-    
-    # F5 = sum(costs[i] for i in prosumer_old)
+
     
     # choose one of the objective functions F1, F2, ... defined above
     
     print('Solving...')
-    model.obj = Objective(expr = F2, 
+    model.obj = Objective(expr = F1, 
                           sense = minimize)
     
     opt = SolverFactory(solver_name)
@@ -619,17 +579,16 @@ def run_KKT(load, PV, prosumer_data, grid_data, weight,
     #     parameter.loc[i, 'PV'] = value(model.PV_new[i])
     #     parameter.loc[i, 'load'] = value(model.load_new[i])
         
-    costs_value = value(model.obj)
     b = []
     for n in years:
         for i in prosumer:
-            b.append(value(model.b[n,i,'Scenario 1']))
+            b.append(value(model.b[n,i,scenarios[0]]))
     u = []
     for n in years:
         for i in prosumer:
             if n == 1:
                 u.append(value(model.u_1[i]))
             else:
-                u.append(value(model.u[n,i,'Scenario 1']))
+                u.append(value(model.u[n,i,scenarios[0]]))
 
-    return costs_value, b, u, q_share
+    return b, u, q_share

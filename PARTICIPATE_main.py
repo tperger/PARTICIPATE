@@ -30,7 +30,7 @@ settlement_pattern = 'rural'
 buildings_per_SP ={'city': {'SH': 0, 'SAB': 0, 'LAB': 10}, #city 
                    'town': {'SH': 0, 'SAB': 10, 'LAB': 0}, #town
                    'suburban': {'SH': 10, 'SAB': 0, 'LAB': 2}, #suburban
-                   'rural': {'SH': 10, 'SAB': 0, 'LAB': 0} #rural
+                   'rural': {'SH': 10, 'SAB': 10, 'LAB': 0} #rural
                    }  
 
 load, PV, prosumer_data, grid_data, weight, distances = pf.define_community(
@@ -46,23 +46,38 @@ N = 3
 years = np.arange(1,N+1).tolist()
 
 # Generate scenarios
-num_scen = 5
+num_scen = 4
 scenarios = ['Scenario '+str(i) for i in range(1,num_scen+1)]
 
 # x_0 = [1,2,3,5,2,1,0,0,2,2,
 #        1,2,3,5,2,1,0,0,2,2]
-x_0 = [1,2,3,5,2,1,0,0,2,2]
+x_0 = [3,3,3,0,0,2,2,0,0,0,
+       0,0,0,2,2,0,0,3,3,3]
 prosumer = load.columns.tolist() 
-s_1 = {}
-for i in prosumer:
-    s_1[i] = np.random.choice([0,1])
+values = [1,1,1,0,0,1,1,0,0,0,
+          0,0,0,1,1,0,0,1,1,1] # for s_1
+s_1 = dict(zip(prosumer, values))
+
 s = {}
 for w in scenarios:
     s[w] = {}
     for n in years[1:]:
-       s[w][n] = {}
-       for i in prosumer:
-           s[w][n][i] = np.random.choice([0,1])
+        if n == years[1]:
+           _values = values 
+        else:
+            if w == scenarios[0]:
+                _values = [1,1,1,0,0,1,1,0,0,0,
+                          1,1,1,1,1,1,1,1,1,1]
+            if w == scenarios[1]:
+                _values = [1,1,1,0,0,1,1,0,0,0,
+                          0,0,0,0,0,0,0,0,0,0]
+            if w == scenarios[2]:
+                _values = [1,1,1,1,1,1,1,1,1,1,
+                          0,0,0,1,1,0,0,1,1,1]
+            if w == scenarios[3]:
+                _values = [0,0,0,0,0,0,0,0,0,0,
+                          0,0,0,1,1,0,0,1,1,1]
+        s[w][n] = dict(zip(prosumer, _values))
            
 # PV_peak = [5,5,0,3,5,5,0,3,5,0,
 #            8,8,0,5,8,8,0,5,8,0]  
@@ -71,9 +86,17 @@ for w in scenarios:
 #         6257.898815,8512.845835,9854.293211,10926.02189,11888.37902,
 #         12819.83943,13782.19656,14853.92524,16195.37261,18450.31963
 #         ]
-PV_peak = [5,5,0,3,5,5,0,3,5,0]  
-load *= [3335.594403,4537.52957,5252.549817,5823.804207,6336.761219,
-         6833.249609,7346.206622,7917.461011,8632.481259,9834.416426] 
+PV_peak = [5,5,0,3,5,5,0,3,5,0,
+           8,8,0,5,8,8,0,5,8,0]       
+load *= [3335.59,4537.53,5252.55,5823.80,6336.76,
+         6833.25,7346.21,7917.46,8632.48,9834.42,
+         6257.90,8512.85,9854.29,10926.02,11888.38,
+         12819.84,13782.20,14853.93,16195.37,18450.32]
+storage = [1,0,0,1,0,1,0,1,0,0,
+           1,0,0,1,0,1,0,1,0,0] 
+prosumer_data.loc['Maximum Storage|Electricity|Energy Storage System'] *= storage
+prosumer_data.loc['Maximum Charge|Electricity|Energy Storage System'] *= storage
+prosumer_data.loc['Maximum Discharge|Electricity|Energy Storage System'] *= storage
 prosumer_data.loc['Maximum Storage|Electricity|Energy Storage System'] *= 3
 prosumer_data.loc['Maximum Charge|Electricity|Energy Storage System'] *= 2
 prosumer_data.loc['Maximum Discharge|Electricity|Energy Storage System'] *= 2 
@@ -87,7 +110,12 @@ results, q_share_total, community_welfare = FRESH_LP.run_LP(
     load, PV, df, grid_data, weight, 
     distances, battery, solver_name, sharing=False)
 
-emissions = results['emissions']
+emissions_old = results['emissions']
+costs_old = results['costs']
 
 # costs, b, u, q_share = PARTICIPATE_KKT.run_KKT(load, PV, df, grid_data, weight, 
 #               distances, emissions, battery, solver_name, years, d, x_0)
+
+b, u, q_share = PARTICIPATE_KKT_neu.run_KKT(
+    load, PV, df, grid_data, weight, 
+    distances, costs_old, battery, solver_name, years, s, s_1, x_0)

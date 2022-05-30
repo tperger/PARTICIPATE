@@ -160,9 +160,9 @@ def define_community(settlement_pattern=None,
     PATH_FILES = Path(__file__).parent / 'Community data'
             
     n = buildings_per_SP[settlement_pattern]
-    prosumer = (['Prosumer LAB '+str(i+1) for i in range(n['LAB'])]
+    prosumer = (['Prosumer SH '+str(i+1) for i in range(n['SH'])]
                 + ['Prosumer SAB '+str(i+1) for i in range(n['SAB'])]
-                + ['Prosumer SH '+str(i+1) for i in range(n['SH'])]
+                + ['Prosumer LAB '+str(i+1) for i in range(n['LAB'])]
                 )    
                    
     # IAMC variable names: Electricity demand, PV generation, other prosumer data

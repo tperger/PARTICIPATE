@@ -26,10 +26,10 @@ def run_LP(load, PV, prosumer_data, grid_data, weight,
 
 
     # deactivate BESS
-    # if battery == False:
-    #     for i in prosumer:
-    #         prosumer_data.loc[SoC_max,i] = 0
-    #         prosumer_data.loc[q_bat_max,i] = 0            
+    if battery == False:
+        for i in prosumer:
+            prosumer_data.loc[SoC_max,i] = 0
+            prosumer_data.loc[q_bat_max,i] = 0            
     
     eta_battery = 0.9
     

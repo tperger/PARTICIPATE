@@ -12,13 +12,13 @@ from pyomo.environ import *
   
 def run_KKT(load, PV, prosumer_data, grid_data, weight, 
             distances, old, battery, solver_name, 
-            years, s_1, x_0):
+            years, s_1, x_0, scenarios):
         
     time_steps = load.index.tolist()
     index_time = list(range(len(time_steps)))
     prosumer = load.columns.tolist() 
     weight=weight['weight'].tolist()
-    scenarios = ['Scenario 1']
+    # scenarios = ['Scenario 1']
     p = 1/len(scenarios)
     
     # Define some parameters and variables
@@ -442,8 +442,9 @@ def run_KKT(load, PV, prosumer_data, grid_data, weight,
     # F1 = sum((costs_1[i] - old[i]) * s_1[i] * b_0[i] 
     #          for i in prosumer) 
     
-    F2 = sum((emissions_1[i] - old[i]) * s_1[i] * b_0[i] 
-              for i in prosumer)
+    F2 = sum((emissions_1[i] - model.b[years[0],i,scenarios[0]] * old[i]) 
+             * s_1[i] * b_0[i] 
+             for i in prosumer)
     
     
     # choose one of the objective functions F1, F2, ... defined above
@@ -482,8 +483,8 @@ def run_KKT(load, PV, prosumer_data, grid_data, weight,
     for i in prosumer:
         x_1[i] = (value(model.x_1[i]))
 
-    emissions = {}
+    emissions_new = {}
     for i in prosumer:
-        emissions[i] = (value(emissions_1[i]))
+        emissions_new[i] = (value(emissions_1[i]))
     
-    return b, u_1, x_1, emissions
+    return b, u_1, x_1, emissions_new

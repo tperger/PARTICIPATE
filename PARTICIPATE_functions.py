@@ -163,7 +163,7 @@ def define_community(settlement_pattern=None,
     prosumer = (['Prosumer SH '+str(i+1) for i in range(n['SH'])]
                 + ['Prosumer SAB '+str(i+1) for i in range(n['SAB'])]
                 + ['Prosumer LAB '+str(i+1) for i in range(n['LAB'])]
-                )    
+                + ['Prosumer SME '+str(i+1) for i in range(n['SME'])])    
                    
     # IAMC variable names: Electricity demand, PV generation, other prosumer data
     # load_var = 'Final Energy|Residential and Commercial|Electricity'
@@ -247,16 +247,21 @@ def define_community(settlement_pattern=None,
     #                       header=0, 
     #                       index_col='Prosumer')
     
-    M = len(prosumer)
+    # M = len(prosumer)
     
-    b = np.zeros((M,1), int)
-    U = np.random.uniform(low=0, high=1.0, size=(M, M))
-    S = np.tril(U) + np.tril(U, -1).T
-    np.fill_diagonal(S, b)
+    # b = np.zeros((M,1), int)
+    # U = np.random.uniform(low=0, high=1.0, size=(M, M))
+    # S = np.tril(U) + np.tril(U, -1).T
+    # np.fill_diagonal(S, b)
     
+    # distances = pd.DataFrame(index=prosumer, 
+    #                          columns=prosumer, 
+    #                          data=S)
+    # distances=distances.round(3)
+    
+    dist_csv=pd.read_csv('distances.csv', sep=';', header=None)
     distances = pd.DataFrame(index=prosumer, 
                              columns=prosumer, 
-                             data=S)
-    distances=distances.round(2)
+                             data=dist_csv.values)
         
     return load, PV, prosumer_data, grid_data, weight, distances

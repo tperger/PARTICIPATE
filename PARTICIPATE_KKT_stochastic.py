@@ -9,7 +9,9 @@ import numpy as np
 from numpy import matlib
 import pandas as pd
 from pyomo.environ import *
-  
+from functools import wraps
+import time
+
 def run_KKT(load, PV, prosumer_data, grid_data, weight, 
             distances, old, battery, solver_name, 
             years, s, s_1, x_0):
@@ -161,14 +163,14 @@ def run_KKT(load, PV, prosumer_data, grid_data, weight,
     # transition function
     
     def transition_fct_rule(model, i, n, w):
-        if n == 1:
+        if n == years[0]:
             if s_1[i] == 1:
                 return (x_0[i] 
                         + s_1[i] * model.u_1[i] 
                         - b_0[i] == model.x_1[i])
             if s_1[i] == 0:
                 return (model.x_1[i] == 0)
-        if n ==2: 
+        if n == years[1]: 
             if s[w][n][i] == 1:
                 return (model.x_1[i] 
                         + s[w][n][i] * model.u[n,i,w] 
@@ -186,10 +188,23 @@ def run_KKT(load, PV, prosumer_data, grid_data, weight,
                                           years,
                                           scenarios,
                                           rule=transition_fct_rule)
+    
+    # def transition_fct_rule(model, i, n, w):
+    #     if n == years[0]:
+    #         return (s_1[i] * (x_0[i] +  model.u_1[i] - b_0[i]) == model.x_1[i])
+
+    #     elif n == years[1]: 
+    #         return (s[w][n][i] * (model.x_1[i] + model.u[n,i,w] - model.b[n-1,i,w]) == model.x[n,i,w])
+    #     else:
+    #         return (s[w][n][i] * (model.x[n-1,i,w] + model.u[n,i,w] - model.b[n-1,i,w]) == model.x[n,i,w])
+    # model.transition_fct_con = Constraint(prosumer, 
+    #                                       years,
+    #                                       scenarios,
+    #                                       rule=transition_fct_rule)
 
     # maximum length of contracts = length of horizon 
     def max_x_con_rule(model, i, n, w):
-        if n == 1:
+        if n == years[0]:
             return (model.u_1[i] <= N)
         else:
             return (model.u[n,i,w] <= N)
@@ -197,10 +212,53 @@ def run_KKT(load, PV, prosumer_data, grid_data, weight,
                                  years,
                                  scenarios,
                                  rule=max_x_con_rule)
+    
+    # once rejected, no going back in
+    
+    def rejection_rule(model, i, n, m, w):
+        if n == years[0]:
+            if s_1[i] == 1:
+                return (model.u[m,i,w] <= model.b[n,i,w] * N) 
+            else:
+                return (model.u[m,i,w] <= N) 
+        else:
+            if s[w][n][i] == 1:
+                if m >= n:
+                    return (model.u[m,i,w] <=  model.b[n,i,w] * N)   
+                else:
+                    return (model.u[m,i,w] <= N)
+            else:
+                return (model.u[m,i,w] <= N)
+    model.rej_con = Constraint(prosumer,
+                                  years,
+                                  years[1:],
+                                  scenarios,
+                                  rule=rejection_rule)
+    
+    # def rejection_rule(model, i, n, m, w):
+    #     if n == years[0]:
+    #         return (model.u[m,i,w] <= s_1[i] * model.b[n,i,w] * N + (1 - s_1[i]) * N)   
+    #     else:
+    #         if m >= n:
+    #             return (model.u[m,i,w] <= s[w][n][i] * model.b[n,i,w] * N + (1 - s[w][n][i]) * N)            
+    #         else:
+    #             return (model.u[m,i,w] <= N)
+    # model.rej_con = Constraint(prosumer,
+    #                               years,
+    #                               years[1:],
+    #                               scenarios,
+    #                               rule=rejection_rule)
+    
+    # def staying_rule(model, i, n, w):
+    #     if n == years[0]:
+    #         return (model.b[n,i,w] >= b_0[i] * s_1[i])
+    #     else:
+    #         return (model.b[n,i,w] >= b_0[i] * s[w][n][i])
+    # model.staying_con = Constraint(prosumer, years, scenarios, rule=staying_rule)
 
     # auxilary variable constraints (big-M style)
     def bin1_con_rule(model, i, n, w):
-        if n == 1:
+        if n == years[0]:
             return (model.x_1[i] >= 1 - model.M3 * (1 - model.b[n,i,w]))
         else:
             return (model.x[n,i,w] >= 1 - model.M3 * (1 - model.b[n,i,w]))
@@ -209,7 +267,7 @@ def run_KKT(load, PV, prosumer_data, grid_data, weight,
                                 scenarios, 
                                 rule = bin1_con_rule)
     def bin2_con_rule(model, i, n, w):
-        if n == 1:
+        if n == years[0]:
             return (model.x_1[i] <= model.M3 * model.b[n,i,w])
         else:
             return (model.x[n,i,w] <= model.M3 * model.b[n,i,w])
@@ -507,7 +565,7 @@ def run_KKT(load, PV, prosumer_data, grid_data, weight,
     #                 for n in years[1:]
     #                 for w in scenarios))
     
-    F2 = (sum((emissions_1[i] - old[i]) * s_1[i] * b_0[i] 
+    F2 = (sum((emissions_1[i] - model.b[years[0],i,scenarios[0]] * old[i]) * s_1[i] * b_0[i] 
               for i in prosumer) 
           + p * sum((emissions[w][n][i] - model.b[n,i,w] * old[i]) * s[w][n][i] * b_0[i]
                     for i in prosumer
@@ -523,14 +581,14 @@ def run_KKT(load, PV, prosumer_data, grid_data, weight,
                           sense = minimize)
     
     opt = SolverFactory(solver_name)
-    opt_success = opt.solve(model)
+    opt_success = opt.solve(model, report_timing=True, tee=True)
     
     # Evaluate the results
     # social_welfare = value(sum(community_welfare[i] 
     #                            + prosumer_welfare[i] for i in prosumer))
     
     q_share = pd.DataFrame(index=prosumer)
-    n = years[-1]
+    n = years[0]
     for j in prosumer:
         a = []
         for i in prosumer:
@@ -577,6 +635,14 @@ def run_KKT(load, PV, prosumer_data, grid_data, weight,
             for i in prosumer:
                 b[w][n][i] = (value(model.b[n,i,w]))
                 
+    x = {}
+    for w in scenarios:
+        x[w] = {}
+        for n in years[1:]:
+            x[w][n] = {}
+            for i in prosumer:
+                x[w][n][i] = (value(model.x[n,i,w]))
+                
     u = {}
     for w in scenarios:
         u[w] = {}
@@ -587,6 +653,22 @@ def run_KKT(load, PV, prosumer_data, grid_data, weight,
     u_1 = {}
     for i in prosumer:
         u_1[i] = (value(model.u_1[i]))
+        
+    x_1 = {}
+    for i in prosumer:
+        x_1[i] = (value(model.x_1[i]))
+
+    emissions_new = {}
+    for i in prosumer:
+        emissions_new[i] = (value(emissions_1[i]))
+        
+    emissions_scen = {}
+    for w in scenarios:
+        emissions_scen[w] = {}
+        for n in years[1:]:
+            emissions_scen[w][n] = {}
+            for i in prosumer:
+                emissions_scen[w][n][i] = (value(emissions[w][n][i]))
 
 
-    return b, u, u_1, q_share
+    return b, u_1, x_1, x, emissions_new, emissions_scen

@@ -166,36 +166,37 @@ b, u_1, x_1, x, emissions_new, emissions_scen = PARTICIPATE_KKT_stochastic.run_K
     battery, solver_name, years, s, s_1, x_0)
 
 print("... took ", str(time.time() - t_start), " sec")
+
 # run model with forecast
 
-# b_sto = {}
-# u_1_sto= {}
-# x_1_sto = {}
-# emissions_sto = {}
+b_sto = {}
+u_1_sto= {}
+x_1_sto = {}
+emissions_sto = {}
 
-# for n in years:   
-#     if n == 1:
-#         _x_0 = x_0
-#         _s_1 = s_1
-#         print('n is 1')
-#     else:
-#         _x_0 = x_1
-#         _s_1 = s['Scenario 1'][n]
-#         print('n is',n)
-#     if len(years[n-1:]) == 1:
-#         b, u_1, x_1, emissions = PARTICIPATE_KKT_deterministic.run_KKT(
-#             load, PV, df, grid_data, weight, 
-#             distances, emissions_old, battery, solver_name, [n], _s_1, _x_0)
-#         print('use KKT deterministic')
-#     else: 
-#         b, u_1, x_1, emissions = PARTICIPATE_KKT_stochastic.run_KKT(
-#             load, PV, df, grid_data, weight, 
-#             distances, emissions_old, battery, solver_name, 
-#             years[n-1:], s, _s_1, _x_0)
-#     b_sto[n] = b['Scenario 1'][n]
-#     u_1_sto[n] = u_1
-#     x_1_sto[n] = x_1
-#     emissions_sto[n] = emissions
+for n in years:   
+    if n == 1:
+        _x_0 = x_0
+        _s_1 = s_1
+        print('n is 1')
+    else:
+        _x_0 = x_1
+        _s_1 = s['Scenario 1'][n]
+        print('n is',n)
+    if len(years[n-1:]) == 1:
+        b, u_1, x_1, emissions = PARTICIPATE_KKT_deterministic.run_KKT(
+            load, PV, df, grid_data, weight, 
+            distances, emissions_old, battery, solver_name, [n], _s_1, _x_0)
+        print('use KKT deterministic')
+    else: 
+        b, u_1, x_1, emissions = PARTICIPATE_KKT_stochastic.run_KKT(
+            load, PV, df, grid_data, weight, 
+            distances, emissions_old, battery, solver_name, 
+            years[n-1:], s, _s_1, _x_0)
+    b_sto[n] = b['Scenario 1'][n]
+    u_1_sto[n] = u_1
+    x_1_sto[n] = x_1
+    emissions_sto[n] = emissions
 
 plot_heatmap = False
 if plot_heatmap:

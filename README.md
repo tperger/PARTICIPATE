@@ -3,7 +3,7 @@
 
 ## A stochastic approach to dynamic participation in energy communities
 
-This is the GitHub repository of the code developed for the analyses in 
+This is the GitHub repository of the code developed for the analyses in: 
 
 Perger, T., Zwickl-Bernhard, S., Golab, A., & Auer, H. (2022). A stochastic approach to dynamic participation in energy communities. Elektrotechnik Und Informationstechnik : E & i. https://doi.org/10.1007/s00502-022-01069-2 
 
